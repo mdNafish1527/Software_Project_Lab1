@@ -9,7 +9,7 @@
 
 using namespace std;
 
-int main() 
+int main(void) 
 {
     int clientSocket;
     struct sockaddr_in serverAddress;
@@ -17,7 +17,7 @@ int main()
 
     if ((clientSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
     {
-        cout << "Your connection is not okay" << endl;
+        cout << "Your connection is not cirrect please check out" << endl;
         return -1;
     }
 
@@ -26,36 +26,39 @@ int main()
 
     if (inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr) == 0 || inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr) < 0) 
     {
-        cout << "Your ip address not supported" << endl;
+        cout << "Your current ip address not supported" << endl;
         return -1;
     }
 
     if (connect(clientSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) 
     {
-        cout << "Connection failed" << endl;
+        cout << "loose connection" << endl;
         return -1;
     }
 
     while (true) 
     {
-        cout << "Enter command (register/login/send_mail/view_inbox/logout/exit): ";
-        string command, username, password, recipient, mailContent;
+        cout << "Enter command (register/login/send_mail/Mailbox/logout/exit): ";
+        string command, username, password, recipient, massage;
         cin >> command;
 
         string request = command;
-        if (command == "register" || command == "login") {
+        if (command == "register" || command == "login") 
+        {
             cout << "Enter username: ";
             cin >> username;
             cout << "Enter password: ";
             cin >> password;
             request += ":" + username + ":" + password;
-        } else if (command == "send_mail") {
+        } 
+        else if (command == "send_mail") 
+        {
             cout << "Enter recipient: ";
             cin >> recipient;
             cin.ignore();
             cout << "Enter mail content: ";
-            getline(cin, mailContent);
-            request += ":" + recipient + ":" + mailContent;
+            getline(cin, massage);
+            request += ":" + recipient + ":" + massage;
         }
 
         send(clientSocket, request.c_str(), request.length(), 0);
