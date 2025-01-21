@@ -8,25 +8,84 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-
+using namespace std;
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
-using namespace std;
 
-mutex fileMutex;  // Mutex to prevent file access conflicts
 
-// Struct to represent a user
 struct User 
 {
     string password;
 };
-
-// Map to store registered users
 map<string, User> users;
+mutex fileMutex;
 
-// Function to load users from the "users.txt" file
-void loadUsers() 
+void loadUsers(void);
+void saveUser(string username,string password);
+void storeMail(string& recipient,string& mailMassage);
+string checkRegistration(string username,string password);
+bool handleLogin(string username,string password);
+string SendMail(string sender,string recipent,string mailMassage);
+string Vieew(string username);
+void handleClient(int clientSocket);
+
+int main(void) 
+{
+    int serverFd, newSocket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+
+    loadUsers();
+
+    if ((serverFd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
+    {
+        cout << "Yout socket failed" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) 
+    {
+        cout << "setsockopt" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(serverFd, (struct sockaddr*)&address, sizeof(address)) < 0) 
+    {
+        cout << "Bind Failed" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(serverFd, 5) < 0) 
+    {
+        cout << "Listen";
+        exit(EXIT_FAILURE);
+    }
+
+    cout << "Server is running on port " << PORT << endl;
+
+    while (true) 
+    {
+        if ((newSocket = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) 
+        {
+            cout << "Accept";
+            exit(EXIT_FAILURE);
+        }
+
+        thread clientThread(handleClient, newSocket);
+        clientThread.detach();
+    }
+
+    return 0;
+}
+
+
+void loadUsers(void) 
 {
     ifstream inFile("users.txt");
     string line;
@@ -43,8 +102,7 @@ void loadUsers()
     inFile.close();
 }
 
-// Function to save a user to "users.txt"
-void saveUser(const string& username, const string& password) 
+void saveUser(string username,string password) 
 {
     lock_guard<mutex> lock(fileMutex);
     ofstream outFile("users.txt", ios::app);
@@ -52,61 +110,64 @@ void saveUser(const string& username, const string& password)
     outFile.close();
 }
 
-// Function to store mail in the recipient's file
-void storeMail(const string& recipient, const string& mailContent) 
+
+void storeMail(string& recipient,string& mailMassage) 
 {
     lock_guard<mutex> lock(fileMutex);
     ofstream outFile(recipient + "_mail.txt", ios::app);
-    outFile << mailContent << endl;
+    outFile << mailMassage << endl;
     outFile.close();
 }
 
-// Handle client registration
-string handleRegistration(const string& username, const string& password) 
+string checkRegistration(string username,string password)
 {
     if (users.find(username) != users.end()) 
     {
-        return "Error: Username already exists.\n";
+        return "This username is already used please try different\n";
     }
 
     users[username] = {password};
     saveUser(username, password);
-    return "Registration successful.\n";
+    return "Your registration completed\n";
 }
 
-// Handle client login
-bool handleLogin(const string& username, const string& password) 
+bool handleLogin(string username,string password) 
 {
     auto it = users.find(username);
-    return it != users.end() && it->second.password == password;
+    if(it != users.end() && it -> second.password == password)
+    {
+        return true;
+    }
+    return false;
 }
 
-// Handle sending mail
-string handleSendMail(const string& sender, const string& recipient, const string& mailContent) 
+
+
+string SendMail(string sender,string recipient,string mailMassage) 
 {
     auto it = users.find(recipient);
     if (it == users.end()) 
     {
-        return "Error: Recipient does not exist.\n";
+        return "This user isn't register in my seerver\n";
     }
 
-    string fullMail = "From: " + sender + "\nMessage: " + mailContent + "\n";
+    string fullMail = "From: " + sender + "\nMessage: " + mailMassage + "\n";
     storeMail(recipient, fullMail);
-    return "Mail sent successfully.\n";
+    return "Yourr mail send successfully\n";
 }
 
-// Handle viewing inbox
-string handleViewInbox(const string& username) 
+
+string Vieew(string username) 
 {
     lock_guard<mutex> lock(fileMutex);
     ifstream inFile(username + "_mail.txt");
     if (!inFile.is_open()) 
     {
-        return "No mails found.\n";
+        return "You don't have any mail\n";
     }
 
     stringstream inbox;
-    inbox << "Inbox:\n";
+    inbox << "your Inbox:\n";
     string line;
     while (getline(inFile, line)) 
     {
@@ -116,132 +177,87 @@ string handleViewInbox(const string& username)
     return inbox.str();
 }
 
-// Function to handle a single client session
-void handleClient(int clientSocket) 
+
+void handleClient(int clientSocket)
 {
     char buffer[BUFFER_SIZE] = {0};
     string username;
-    bool isLoggedIn = false;
-
-    while (true) 
+    bool login = false;
+    while(1)
     {
-        memset(buffer, 0, BUFFER_SIZE);
-        read(clientSocket, buffer, BUFFER_SIZE);
+        memset(buffer,0,BUFFER_SIZE);
+        read(clientSocket,buffer,BUFFER_SIZE);
 
         string request(buffer);
         stringstream ss(request);
-        string command, password, recipient, mailContent;
-        getline(ss, command, ':');
-
+        string commandd,password,recipient,mailMassage;
+        getline(ss,commandd,':');
         string response;
 
-        if (command == "register") 
+        if(commandd == "register")
         {
-            getline(ss, username, ':');
-            getline(ss, password, ':');
-            response = handleRegistration(username, password);
-
-        } 
-        else if (command == "login") 
+            getline(ss,username,':');
+            getline(ss,password,':');
+            response = checkRegistration(username,password);
+        }
+        else if (commandd == "login")
         {
-            getline(ss, username, ':');
-            getline(ss, password, ':');
-            if (handleLogin(username, password)) 
+            getline(ss,username,':');
+            getline(ss,password,':');
+            if(handleLogin(username,password))
             {
-                isLoggedIn = true;
-                response = "Login successful.\n";
-            } 
-            else 
-            {
-                response = "Error: Invalid username or password.\n";
+                login = true;
+                response = "login succesful\n";
             }
+            else
+            {
+                response = "Wrong password or username\n";
+            }
+        }
 
-        } 
-        else if (command == "send_mail" && isLoggedIn) 
+        else if(commandd == "send_mail")
         {
-            getline(ss, recipient, ':');
-            getline(ss, mailContent);
-            response = handleSendMail(username, recipient, mailContent);
-
-        } 
-        else if (command == "view_inbox" && isLoggedIn) 
+            cout << "Enter the recipient ";
+            cin >> recipient;
+            cin.ignore();
+            cout << "Enter the massage ";
+            getline(cin,mailMassage);
+            request += ":" + recipient + ":" + mailMassage;
+        }
+        else if(commandd == "Mailbox")
         {
-            response = handleViewInbox(username);
-
-        } 
-        else if (command == "logout" && isLoggedIn) 
+            if(login)
+            {
+                response = Vieew(username);
+            }
+            else
+            {
+                response = "Please login firstly\n" ;
+            }
+        }
+        else if(commandd == "logout")
         {
-            response = "Logout successful.\n";
-            isLoggedIn = false;
-
-        } 
-        else if (command == "exit") 
+            if(login)
+            {
+                response = "Logout Succesfull\n";
+                login = false;
+            }
+            else
+            {
+                response = "You are not logged in how can you logout\n";
+            }
+        }
+        else if(commandd == "exit")
         {
-            response = "Goodbye.\n";
-            send(clientSocket, response.c_str(), response.length(), 0);
+            response = "Al bida tata bye bye \n";
+            send(clientSocket,response.c_str(),response.length(),0);
             break;
-
         }
-        else 
+        else
         {
-            response = "Error: Invalid command or not logged in.\n";
+            response = "Your command isn't valid\n";
         }
-
-        send(clientSocket, response.c_str(), response.length(), 0);
+        send(clientSocket,response.c_str(),response.length(),0);
     }
-
     close(clientSocket);
-}
-
-int main() {
-    int serverFd, newSocket;
-    struct sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
-
-    loadUsers();
-
-    if ((serverFd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
-    {
-        perror("Socket failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) 
-    {
-        perror("setsockopt");
-        exit(EXIT_FAILURE);
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    if (bind(serverFd, (struct sockaddr*)&address, sizeof(address)) < 0) 
-    {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(serverFd, 5) < 0) 
-    {
-        perror("Listen");
-        exit(EXIT_FAILURE);
-    }
-
-    cout << "Server is running on port " << PORT << endl;
-
-    while (true) 
-    {
-        if ((newSocket = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) 
-        {
-            perror("Accept");
-            exit(EXIT_FAILURE);
-        }
-
-        thread clientThread(handleClient, newSocket);
-        clientThread.detach();
-    }
-
-    return 0;
 }
