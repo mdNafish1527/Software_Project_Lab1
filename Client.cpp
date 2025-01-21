@@ -32,10 +32,11 @@ int main(void)
         cout << "loose connection" << endl;
         return -1;
     }
+    bool flag = true;
 
-    while (true) 
+    for( ; flag ; )
     {
-        cout << "Enter your command (register/login/send_mail/Mailbox/logout/exit): ";
+         cout << "Enter your command (register/login/send_mail/Mailbox/logout/exit): ";
         string comand, username, passsword, recipient, massage;
         cin >> comand;
 
@@ -66,7 +67,7 @@ int main(void)
 
         if (comand == "exit") 
         {
-            break;
+            flag = false;
         }
     }
 
