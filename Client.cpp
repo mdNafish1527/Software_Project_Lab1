@@ -1,36 +1,33 @@
-#include <iostream>
-#include <cstring>
+#include <bits/stdc++.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-
 #define PORT 8080
 #define BUFFER_SIZE 1024
-
 using namespace std;
 
 int main(void) 
 {
-    int clientSocket;
-    struct sockaddr_in serverAddress;
-    char buffer[BUFFER_SIZE] = {0};
+    int my_socket;
+    struct sockaddr_in server_adress;
+    char new_buffer[BUFFER_SIZE] = {0};
 
-    if ((clientSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
+    if ((my_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
     {
         cout << "Your connection is not cirrect please check out" << endl;
         return -1;
     }
 
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(PORT);
+    server_adress.sin_family = AF_INET;
+    server_adress.sin_port = htons(PORT);
 
-    if (inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr) == 0 || inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr) < 0) 
+    if (inet_pton(AF_INET, "127.0.0.1", &server_adress.sin_addr) == 0 || inet_pton(AF_INET, "127.0.0.1", &server_adress.sin_addr) < 0) 
     {
         cout << "Your current ip address not supported" << endl;
         return -1;
     }
 
-    if (connect(clientSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) 
+    if (connect(my_socket, (struct sockaddr*)&server_adress, sizeof(server_adress)) < 0) 
     {
         cout << "loose connection" << endl;
         return -1;
@@ -38,20 +35,20 @@ int main(void)
 
     while (true) 
     {
-        cout << "Enter command (register/login/send_mail/Mailbox/logout/exit): ";
-        string command, username, password, recipient, massage;
-        cin >> command;
+        cout << "Enter your command (register/login/send_mail/Mailbox/logout/exit): ";
+        string comand, username, passsword, recipient, massage;
+        cin >> comand;
 
-        string request = command;
-        if (command == "register" || command == "login") 
+        string request = comand;
+        if (comand == "register" || comand == "login") 
         {
             cout << "Enter username: ";
             cin >> username;
             cout << "Enter password: ";
-            cin >> password;
-            request += ":" + username + ":" + password;
+            cin >> passsword;
+            request += ":" + username + ":" + passsword;
         } 
-        else if (command == "send_mail") 
+        else if (comand == "send_mail") 
         {
             cout << "Enter recipient: ";
             cin >> recipient;
@@ -61,18 +58,18 @@ int main(void)
             request += ":" + recipient + ":" + massage;
         }
 
-        send(clientSocket, request.c_str(), request.length(), 0);
+        send(my_socket, request.c_str(), request.length(), 0);
 
-        memset(buffer, 0, BUFFER_SIZE);
-        read(clientSocket, buffer, BUFFER_SIZE);
-        cout << "Server: " << buffer;
+        memset(new_buffer, 0, BUFFER_SIZE);
+        read(my_socket, new_buffer, BUFFER_SIZE);
+        cout << "Server: " << new_buffer;
 
-        if (command == "exit") 
+        if (comand == "exit") 
         {
             break;
         }
     }
 
-    close(clientSocket);
+    close(my_socket);
     return 0;
 }
