@@ -69,7 +69,8 @@ int main(void)
 
     cout << "Server is running on port " << PORT << endl;
 
-    while (true) 
+    bool flag = true;
+    for( ; flag ; )
     {
         if ((newSocket = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) 
         {
@@ -78,7 +79,7 @@ int main(void)
         }
 
         thread clientThread(handleClient, newSocket);
-        clientThread.detach();
+        clientThread.detach();   
     }
 
     return 0;
