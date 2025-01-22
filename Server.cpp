@@ -63,7 +63,7 @@ int main(void)
 
     if (listen(serverFd, 5) < 0) 
     {
-        cout << "Listen";
+        cout << "Listen isn't working " << endl ;
         exit(EXIT_FAILURE);
     }
 
@@ -74,7 +74,7 @@ int main(void)
     {
         if ((newSocket = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) 
         {
-            cout << "Accept";
+            cout << "Accept failed and program crashed" << endl;
             exit(EXIT_FAILURE);
         }
 
@@ -197,22 +197,36 @@ void handleClient(int clientSocket)
 
         if(commandd == "register")
         {
-            getline(ss,username,':');
-            getline(ss,password,':');
-            response = checkRegistration(username,password);
-        }
-        else if (commandd == "login")
-        {
-            getline(ss,username,':');
-            getline(ss,password,':');
-            if(handleLogin(username,password))
+            if(login)
             {
-                login = true;
-                response = "login succesful\n";
+                response = "You are logged in please logout then you can make another registration\n";
             }
             else
             {
-                response = "Wrong password or username\n";
+                getline(ss,username,':');
+                getline(ss,password,':');
+                response = checkRegistration(username,password);
+            }
+        }
+        else if (commandd == "login")
+        {
+            if(login)
+            {
+               response = "You are logged in already\n";  
+            }
+            else
+            {
+                getline(ss,username,':');
+                getline(ss,password,':');
+                if(handleLogin(username,password))
+                {
+                    login = true;
+                    response = "login succesful\n";
+                }
+                else
+                {
+                    response = "Wrong password or username\n";
+                }
             }
         }
 
