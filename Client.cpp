@@ -1,76 +1,116 @@
-#include <bits/stdc++.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include <iostream>
+#include <string>
 #include <unistd.h>
-#define PORT 8080
-#define BUFFER_SIZE 1024
+#include <arpa/inet.h>
+#include <cstring>
+
 using namespace std;
+
+
+void sendData(int sock, const string& data) 
+{
+    int length = data.length();
+    char lenBuffer[4];
+    int networkLength = htonl(length); 
+    memcpy(lenBuffer, &networkLength, 4); 
+    send(sock, lenBuffer, 4, 0); 
+    send(sock, data.c_str(), length, 0); 
+}
+
 
 int main(void) 
 {
-    int my_socket;
-    struct sockaddr_in server_adress;
-    char new_buffer[BUFFER_SIZE] = {0};
+    int sock;
+    struct sockaddr_in serverAddr;
+    char buffer[1024];
+    string command, username, password, recipient, message;
 
-    if ((my_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
-    {
-        cout << "Your connection is not cirrect please check out" << endl;
-        return -1;
-    }
 
-    server_adress.sin_family = AF_INET;
-    server_adress.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, "127.0.0.1", &server_adress.sin_addr) == 0 || inet_pton(AF_INET, "127.0.0.1", &server_adress.sin_addr) < 0) 
-    {
-        cout << "Your current ip address not supported" << endl;
-        return -1;
-    }
-
-    if (connect(my_socket, (struct sockaddr*)&server_adress, sizeof(server_adress)) < 0) 
-    {
-        cout << "loose connection" << endl;
-        return -1;
-    }
-    bool flag = true;
-
-    for( ; flag ; )
-    {
-         cout << "Enter your command (register/login/send_mail/Mailbox/logout/exit): ";
-        string comand, username, passsword, recipient, massage;
-        cin >> comand;
-
-        string request = comand;
-        if (comand == "register" || comand == "login") 
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
         {
-            cout << "Enter username: ";
-            cin >> username;
-            cout << "Enter password: ";
-            cin >> passsword;
-            request += ":" + username + ":" + passsword;
-        } 
-        else if (comand == "send_mail") 
-        {
-            cout << "Enter recipient: ";
-            cin >> recipient;
-            cin.ignore();
-            cout << "Enter mail content: ";
-            getline(cin, massage);
-            request += ":" + recipient + ":" + massage;
+            cerr << "Socket creation failed" << endl;
+            return 1;
         }
 
-        send(my_socket, request.c_str(), request.length(), 0);
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(8080);
+    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-        memset(new_buffer, 0, BUFFER_SIZE);
-        read(my_socket, new_buffer, BUFFER_SIZE);
-        cout << "Server: " << new_buffer;
-
-        if (comand == "exit") 
+    
+    if (connect(sock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == -1) 
         {
-            flag = false;
+            cerr << "Connection to server failed" << endl;
+            return 1;
         }
+
+    cout << "Connected to the server!" << endl;
+
+    while (true) 
+    {
+        cout << "Enter command (register, login, sendmail, viewmail, or quit): ";
+        cin >> command;
+
+        if (command == "register") 
+            {
+                cout << "Enter username: ";
+                cin >> username;
+                cout << "Enter password: ";
+                cin.ignore();
+                getline(cin, password);
+
+                sendData(sock, "register");
+                sendData(sock, username);
+                sendData(sock, password);
+
+                recv(sock, buffer, sizeof(buffer), 0);
+                cout << buffer << endl;
+            } 
+        else if (command == "login") 
+            {
+                cout << "Enter username: ";
+                cin >> username;
+                cout << "Enter password: ";
+                cin.ignore(); 
+                getline(cin, password); 
+
+                sendData(sock, "login");
+                sendData(sock, username);
+                sendData(sock, password);
+
+                recv(sock, buffer, sizeof(buffer), 0);
+                cout << buffer << endl;
+            } 
+        else if (command == "sendmail") 
+            {
+                cout << "Enter recipient's username: ";
+                cin >> recipient;
+                cout << "Enter your message: ";
+                cin.ignore(); 
+                getline(cin, message);
+
+                sendData(sock, "sendmail");
+                sendData(sock, recipient);
+                sendData(sock, message);
+
+                recv(sock, buffer, sizeof(buffer), 0);
+                cout << buffer << endl;
+            } 
+        else if (command == "viewmail") 
+            {
+                sendData(sock, "viewmail");
+                recv(sock, buffer, sizeof(buffer), 0);
+                cout << buffer << endl;
+            } 
+        else if (command == "quit") 
+            {
+                break;
+            } 
+        else 
+            {
+                cout << "Invalid command" << endl;
+            }
     }
 
-    close(my_socket);
+    close(sock);
     return 0;
 }
