@@ -1,278 +1,200 @@
 #include <iostream>
 #include <fstream>
-#include <sstream>
-#include <cstring>
-#include <map>
-#include <thread>
-#include <mutex>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <cstring>
+#include <sys/socket.h>
+
 using namespace std;
-#define PORT 8080
-#define BUFFER_SIZE 1024
+
+unordered_map<string, string> users; 
+unordered_set<string> loggedInUsers; 
 
 
-
-struct User 
+void loadUsers() 
 {
-    string password;
-};
-map<string, User> users;
-mutex fileMutex;
+    ifstream infile("users.txt");
+    string username, password;
+    while (infile >> username) 
+        {
+            getline(infile, password);
+            if (password.size() > 0 && password[0] == ' ')
+                {
+                    password.erase(0, 1);
+                }
+            users[username] = password;
+        }
+    infile.close();
+}
 
-void loadUsers(void);
-void saveUser(string username,string password);
-void storeMail(string& recipient,string& mailMassage);
-string checkRegistration(string username,string password);
-bool handleLogin(string username,string password);
-string SendMail(string sender,string recipent,string mailMassage);
-string Vieew(string username);
-void handleClient(int clientSocket);
+
+
+void saveUsers() 
+{
+    ofstream outfile("users.txt", ios::trunc);
+    for (auto& user : users) 
+        {
+            outfile << user.first << " " << user.second << endl;
+        }
+    outfile.close();
+}
+
+
+
+
+string receiveData(int clientSock) 
+{
+    char lenBuffer[4]; 
+    recv(clientSock, lenBuffer, 4, 0);
+    int length = ntohl(*reinterpret_cast<int*>(lenBuffer));
+    char buffer[length + 1];
+    recv(clientSock, buffer, length, 0); 
+    buffer[length] = '\0';
+    return string(buffer);
+}
+
+
+
+
+void handleClient(int clientSock) 
+{
+    string command, username, password, recipient, message;
+
+    command = receiveData(clientSock);
+
+    if (command == "register") 
+    {
+        username = receiveData(clientSock);
+      
+        password = receiveData(clientSock);
+
+      
+        if (users.find(username) != users.end()) 
+            {
+                send(clientSock, "Username already exists", 23, 0);
+            } 
+        else 
+            {
+                users[username] = password;
+                saveUsers();
+                send(clientSock, "Registration successful", 23, 0);
+            }
+    }
+    
+    else if (command == "login") 
+        {
+            username = receiveData(clientSock);
+            password = receiveData(clientSock);
+
+            if (users.find(username) != users.end() && users[username] == password) 
+                {
+                    loggedInUsers.insert(username);  // Mark user as logged in
+                    send(clientSock, "Login successful", 16, 0);
+                } 
+            else 
+                {
+                    send(clientSock, "Invalid username or password", 28, 0);
+                }
+        }
+
+    if (loggedInUsers.find(username) == loggedInUsers.end()) 
+        {
+            send(clientSock, "You must be logged in to send mail or view mailbox", 52, 0);
+            close(clientSock);
+            return;
+        }
+
+    command = receiveData(clientSock);
+    if (command == "sendmail") 
+    {
+        recipient = receiveData(clientSock);
+        message = receiveData(clientSock);
+
+        if (users.find(recipient) == users.end()) 
+            {
+                send(clientSock, "Recipient not registered", 24, 0);
+            } 
+        else 
+            {
+                ofstream mailFile(recipient + "_mailbox.txt", ios::app);
+                mailFile << "From: " << username << "\n" << "Message: " << message << endl;
+                mailFile.close();
+                send(clientSock, "Mail sent successfully", 21, 0);
+            }
+    } 
+    else if (command == "viewmail") 
+    {
+        ifstream mailFile(username + "_mailbox.txt");
+        if (mailFile.is_open()) 
+            {
+                string line;
+                while (getline(mailFile, line)) 
+                    {
+                        send(clientSock, line.c_str(), line.length(), 0);
+                        send(clientSock, "\n", 1, 0);
+                    }
+                mailFile.close();
+            } 
+        else 
+        {
+            send(clientSock, "No mails", 8, 0);
+        }
+    }
+
+    close(clientSock);
+}
 
 int main(void) 
 {
-    int serverFd, newSocket;
-    struct sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
+    int serverSock, clientSock;
+    struct sockaddr_in serverAddr, clientAddr;
+    socklen_t clientLen = sizeof(clientAddr);
 
     loadUsers();
 
-    if ((serverFd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
-    {
-        cout << "Yout socket failed" << endl;
-        exit(EXIT_FAILURE);
-    }
 
-    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) 
-    {
-        cout << "setsockopt" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    if (bind(serverFd, (struct sockaddr*)&address, sizeof(address)) < 0) 
-    {
-        cout << "Bind Failed" << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(serverFd, 5) < 0) 
-    {
-        cout << "Listen isn't working " << endl ;
-        exit(EXIT_FAILURE);
-    }
-
-    cout << "Server is running on port " << PORT << endl;
-
-    bool flag = true;
-    for( ; flag ; )
-    {
-        if ((newSocket = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) 
+    if ((serverSock = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
         {
-            cout << "Accept failed and program crashed" << endl;
-            exit(EXIT_FAILURE);
+            cerr << "Socket creation failed" << endl;
+            return 1;
         }
 
-        thread clientThread(handleClient, newSocket);
-        clientThread.detach();   
-    }
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(8080);
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
 
+    if (bind(serverSock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == -1) 
+        {
+            cerr << "Binding failed" << endl;
+            return 1;
+        }
+
+ 
+    if (listen(serverSock, 5) == -1) 
+        {
+            cerr << "Listen failed" << endl;
+            return 1;
+        }
+
+    cout << "Server started, waiting for connections..." << endl;
+
+    while (true) 
+        {
+           
+            if ((clientSock = accept(serverSock, (struct sockaddr*)&clientAddr, &clientLen)) == -1) 
+                {
+                    cerr << "Client connection failed" << endl;
+                    continue;
+                }
+
+            cout << "Client connected" << endl;
+
+            handleClient(clientSock);
+        }
+
+    close(serverSock);
     return 0;
-}
-
-
-void loadUsers(void) 
-{
-    ifstream inFile("users.txt");
-    string line;
-    while (getline(inFile, line)) 
-    {
-        size_t separator = line.find(':');
-        if (separator != string::npos) 
-        {
-            string username = line.substr(0, separator);
-            string password = line.substr(separator + 1);
-            users[username] = {password};
-        }
-    }
-    inFile.close();
-}
-
-void saveUser(string username,string password) 
-{
-    lock_guard<mutex> lock(fileMutex);
-    ofstream outFile("users.txt", ios::app);
-    outFile << username << ":" << password << endl;
-    outFile.close();
-}
-
-
-void storeMail(string& recipient,string& mailMassage) 
-{
-    lock_guard<mutex> lock(fileMutex);
-    ofstream outFile(recipient + "_mail.txt", ios::app);
-    outFile << mailMassage << endl;
-    outFile.close();
-}
-
-string checkRegistration(string username,string password)
-{
-    if (users.find(username) != users.end()) 
-    {
-        return "This username is already used please try different\n";
-    }
-
-    users[username] = {password};
-    saveUser(username, password);
-    return "Your registration completed\n";
-}
-
-bool handleLogin(string username,string password) 
-{
-    auto it = users.find(username);
-    if(it != users.end() && it -> second.password == password)
-    {
-        return true;
-    }
-    return false;
-}
-
-
-
-string SendMail(string sender,string recipient,string mailMassage) 
-{
-    auto it = users.find(recipient);
-    if (it == users.end()) 
-    {
-        return "This user isn't register in my seerver\n";
-    }
-
-    string fullMail = "From: " + sender + "\nMessage: " + mailMassage + "\n";
-    storeMail(recipient, fullMail);
-    return "Yourr mail send successfully\n";
-}
-
-
-string Vieew(string username) 
-{
-    lock_guard<mutex> lock(fileMutex);
-    ifstream inFile(username + "_mail.txt");
-    if (!inFile.is_open()) 
-    {
-        return "You don't have any mail\n";
-    }
-
-    stringstream inbox;
-    inbox << "your Inbox:\n";
-    string line;
-    while (getline(inFile, line)) 
-    {
-        inbox << line << endl;
-    }
-    inFile.close();
-    return inbox.str();
-}
-
-
-void handleClient(int clientSocket)
-{
-    char buffer[BUFFER_SIZE] = {0};
-    string username;
-    bool login = false;
-    while(1)
-    {
-        memset(buffer,0,BUFFER_SIZE);
-        read(clientSocket,buffer,BUFFER_SIZE);
-
-        string request(buffer);
-        stringstream ss(request);
-        string commandd,password,recipient,mailMassage;
-        getline(ss,commandd,':');
-        string response;
-
-        if(commandd == "register")
-        {
-            if(login)
-            {
-                response = "You are logged in please logout then you can make another registration\n";
-            }
-            else
-            {
-                getline(ss,username,':');
-                getline(ss,password,':');
-                response = checkRegistration(username,password);
-            }
-        }
-        else if (commandd == "login")
-        {
-            if(login)
-            {
-               response = "You are logged in already\n";  
-            }
-            else
-            {
-                getline(ss,username,':');
-                getline(ss,password,':');
-                if(handleLogin(username,password))
-                {
-                    login = true;
-                    response = "login succesful\n";
-                }
-                else
-                {
-                    response = "Wrong password or username\n";
-                }
-            }
-        }
-
-        else if(commandd == "send_mail")
-        {
-            cout << "Enter the recipient ";
-            cin >> recipient;
-            cin.ignore();
-            cout << "Enter the massage ";
-            getline(cin,mailMassage);
-            request += ":" + recipient + ":" + mailMassage;
-        }
-        else if(commandd == "Mailbox")
-        {
-            if(login)
-            {
-                response = Vieew(username);
-            }
-            else
-            {
-                response = "Please login firstly\n" ;
-            }
-        }
-        else if(commandd == "logout")
-        {
-            if(login)
-            {
-                response = "Logout Succesfull\n";
-                login = false;
-            }
-            else
-            {
-                response = "You are not logged in how can you logout\n";
-            }
-        }
-        else if(commandd == "exit")
-        {
-            response = "Al bida tata bye bye \n";
-            send(clientSocket,response.c_str(),response.length(),0);
-            break;
-        }
-        else
-        {
-            response = "Your command isn't valid\n";
-        }
-        send(clientSocket,response.c_str(),response.length(),0);
-    }
-    close(clientSocket);
 }
