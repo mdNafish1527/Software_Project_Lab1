@@ -6,17 +6,91 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <cstdbool>
+#include <cstdlib>
+#include <aliases.h>
+#include <cstdio>
 #include <sys/socket.h>
-
 using namespace std;
 
-unordered_map<string, string> users; 
-unordered_set<string> loggedInUsers; 
+
+unordered_set<string> loggedInUsers;
+unordered_map<string, string> users;  
+
+
+
+string atbashChipperEncrypt(const string& input)
+    {
+        string output;
+        for(int i = 0 ;i < input.size() ; i++)
+        {
+            output.push_back(input[i]);
+        }
+
+        for(int i = 0 ; i < output.size() ; i++)
+        {
+            if(isalpha(output[i]))
+                {
+                    if(output[i] >= 'A' && output[i] <= 'Z')
+                        {
+                            output[i] = 'Z' + 'A' - output[i];
+                        }
+                    else if(output[i] >= 'a' && output[i] <= 'z')
+                        {
+                            output[i] = 'z' + 'a' - output[i];
+                        }
+                    else if(output[i] >= '0' && output[i] <= '9')
+                        {
+                            output[i] = '9' - output[i];
+                        }
+                }
+        }
+        return output;
+    }
+
+
+
+string atbashChipperDecrypt(const string& input)
+    {
+        string output;
+        for(int i = 0 ;i < input.size() ; i++)
+        {
+            output.push_back(input[i]);
+        }
+
+        for(int i = 0 ; i < output.size() ; i++)
+        {
+            if(isalpha(output[i]))
+                {
+                    if(output[i] >= 'A' && output[i] <= 'Z')
+                        {
+                            output[i] = 'Z' + 'A' - output[i];
+                        }
+                    else if(output[i] >= 'a' && output[i] <= 'z')
+                    {
+                        output[i] = 'z' + 'a' - output[i];
+                    }
+                    else if(output[i] >= '0' && output[i] <= '9')
+                        {
+                            output[i] = '9' - output[i];
+                        }
+                }
+        }
+        return output;
+        
+    }
 
 
 void loadUsers() 
 {
     ifstream infile("users.txt");
+    if(!infile)
+        {
+            cout << "Server become hacked... wait.. " << endl;
+            ofstream newFile("users.txt");
+            newFile.close();
+            return;
+        }
     string username, password;
     while (infile >> username) 
         {
@@ -25,6 +99,26 @@ void loadUsers()
                 {
                     password.erase(0, 1);
                 }
+            
+            for(int i = 0 ; i < password.size() ; i++)
+                {
+                    if(isalpha(password[i]))
+                        {
+                            if(password[i] >= 'A' && password[i] <= 'Z')
+                            {
+                                password[i] = 'Z' + 'A' - password[i];
+                            }
+                            else if(password[i] >= 'a' && password[i] <= 'z')
+                                {
+                                    password[i] = 'z' + 'a' - password[i];
+                                }
+                        else if(password[i] >= '0' && password[i] <= '9')
+                            {
+                                password[i] = '9' - password[i];
+                            }   
+                        }
+                }
+            
             users[username] = password;
         }
     infile.close();
@@ -37,7 +131,30 @@ void saveUsers()
     ofstream outfile("users.txt", ios::trunc);
     for (auto& user : users) 
         {
-            outfile << user.first << " " << user.second << endl;
+            string text;
+            for(int i = 0 ; i < user.second.size() ; i++)
+                {
+                    text.push_back(user.second[i]);
+                }
+            
+            for(int i = 0 ; i < text.size() ; i++)
+                {
+                    if(text[i] >= 'A' && text[i] <= 'Z')
+                        {
+                            text[i] = 'A' + 'Z' - text[i];
+                        }
+                        else if(text[i] >= 'a' && text[i] <= 'z')
+                        {
+                            text[i] = 'z' + 'a' - text[i];
+                        }
+                        else if(text[i] >= '0' && text[i] <= '9')
+                        {
+                            text[i] = '9' - text[i];
+                        }
+                }
+            
+
+            outfile << user.first << " " << text << endl;
         }
     outfile.close();
 }
@@ -49,6 +166,7 @@ string receiveData(int clientSock)
 {
     char lenBuffer[4]; 
     recv(clientSock, lenBuffer, 4, 0);
+
     int length = ntohl(*reinterpret_cast<int*>(lenBuffer));
     char buffer[length + 1];
     recv(clientSock, buffer, length, 0); 
@@ -61,7 +179,7 @@ string receiveData(int clientSock)
 
 void handleClient(int clientSock) 
 {
-    string command, username, password, recipient, message;
+    string command, username, password, recipient, message,newPass;
 
     command = receiveData(clientSock);
 
@@ -74,13 +192,15 @@ void handleClient(int clientSock)
       
         if (users.find(username) != users.end()) 
             {
-                send(clientSock, "Username already exists", 23, 0);
+                string msge = "This username already exis";
+                send(clientSock,msge.c_str(), msge.size(), 0);
             } 
         else 
             {
                 users[username] = password;
                 saveUsers();
-                send(clientSock, "Registration successful", 23, 0);
+                string msge = "Your registration succesful";
+                send(clientSock, msge.c_str(), msge.size(), 0);
             }
     }
     
@@ -91,18 +211,21 @@ void handleClient(int clientSock)
 
             if (users.find(username) != users.end() && users[username] == password) 
                 {
-                    loggedInUsers.insert(username);  // Mark user as logged in
-                    send(clientSock, "Login successful", 16, 0);
+                    loggedInUsers.insert(username);
+                    string msge = "Your login succesful";
+                    send(clientSock, msge.c_str(), msge.size(), 0);
                 } 
             else 
                 {
-                    send(clientSock, "Invalid username or password", 28, 0);
+                    string msge = "Invalid username or password won't match";
+                    send(clientSock, msge.c_str(), msge.size(), 0);
                 }
         }
 
     if (loggedInUsers.find(username) == loggedInUsers.end()) 
         {
-            send(clientSock, "You must be logged in to send mail or view mailbox", 52, 0);
+            string msge = "You have to loggedin first";
+            send(clientSock, msge.c_str(), msge.size(), 0);
             close(clientSock);
             return;
         }
@@ -110,23 +233,74 @@ void handleClient(int clientSock)
     command = receiveData(clientSock);
     if (command == "sendmail") 
     {
+        
+        if (loggedInUsers.find(username) == loggedInUsers.end()) 
+        {
+            string msge = "You have to loggedin first";
+            send(clientSock, msge.c_str(), msge.size(), 0);
+            close(clientSock);
+            return;
+        }
+
         recipient = receiveData(clientSock);
         message = receiveData(clientSock);
 
         if (users.find(recipient) == users.end()) 
             {
-                send(clientSock, "Recipient not registered", 24, 0);
+                string msge = "This recipient not registered to the server";
+                send(clientSock, msge.c_str(), msge.size(), 0);
             } 
         else 
             {
                 ofstream mailFile(recipient + "_mailbox.txt", ios::app);
                 mailFile << "From: " << username << "\n" << "Message: " << message << endl;
                 mailFile.close();
-                send(clientSock, "Mail sent successfully", 21, 0);
+                string msge = "Mail sended";
+                send(clientSock, msge.c_str(), msge.size(), 0);
             }
     } 
+    else if (command == "changepass")
+        {
+            
+            if (loggedInUsers.find(username) == loggedInUsers.end()) 
+        {
+            string msge = "You have to loggedin first";
+            send(clientSock, msge.c_str(), msge.size(), 0);
+            close(clientSock);
+            return;
+        }
+            username = receiveData(clientSock);
+            password = receiveData(clientSock);
+            newPass = receiveData(clientSock);
+
+            if(loggedInUsers.find(username) == loggedInUsers.end())
+                {
+                    string msge = "Please login first then try to change password";
+                    send(clientSock,msge.c_str(),msge.size(),0);
+                }
+            else if(users.find(username) != users.end() && users[username] == password)
+                {
+                    users[username] = newPass;
+                    saveUsers();
+                    string msge = "Your password changed successfully";
+                    send(clientSock,msge.c_str(),msge.size(),0);
+                }
+            else
+                {
+                    string msge = "Invalid old password";
+                    send(clientSock,msge.c_str(),msge.size(),0);
+                }
+        }
     else if (command == "viewmail") 
     {
+        if (loggedInUsers.find(username) == loggedInUsers.end()) 
+        {
+            string msge = "You have to loggedin first";
+            send(clientSock, msge.c_str(), msge.size(), 0);
+            close(clientSock);
+            return;
+        }
+        
         ifstream mailFile(username + "_mailbox.txt");
         if (mailFile.is_open()) 
             {
@@ -140,9 +314,26 @@ void handleClient(int clientSock)
             } 
         else 
         {
-            send(clientSock, "No mails", 8, 0);
+            string msge = "There is no mail";
+            send(clientSock, msge.c_str(), msge.size(), 0);
         }
     }
+    else if (command == "logout")
+        {
+            if (loggedInUsers.find(username) == loggedInUsers.end()) 
+            {
+                string msge = "You have to loggedin first";
+                send(clientSock, msge.c_str(), msge.size(), 0);
+                close(clientSock);
+                return;
+            }
+            else
+                {
+                    string msge = "You aren't logged in";
+                    send(clientSock,msge.c_str(),msge.size(),0);
+                }
+            close(clientSock);
+        }
 
     close(clientSock);
 }
@@ -158,7 +349,7 @@ int main(void)
 
     if ((serverSock = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
         {
-            cerr << "Socket creation failed" << endl;
+            cout << "Socket creation failed" << endl;
             return 1;
         }
 
@@ -168,14 +359,14 @@ int main(void)
 
     if (bind(serverSock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == -1) 
         {
-            cerr << "Binding failed" << endl;
+            cout << "Binding failed" << endl;
             return 1;
         }
 
  
     if (listen(serverSock, 5) == -1) 
         {
-            cerr << "Listen failed" << endl;
+            cout << "Listen failed" << endl;
             return 1;
         }
 
@@ -186,7 +377,7 @@ int main(void)
            
             if ((clientSock = accept(serverSock, (struct sockaddr*)&clientAddr, &clientLen)) == -1) 
                 {
-                    cerr << "Client connection failed" << endl;
+                    cout << "Client connection failed" << endl;
                     continue;
                 }
 
@@ -194,6 +385,7 @@ int main(void)
 
             handleClient(clientSock);
         }
+    
 
     close(serverSock);
     return 0;
