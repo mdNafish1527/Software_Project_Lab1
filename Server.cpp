@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <aliases.h>
 #include <cstdio>
+#include <fstream>
+#include <fcntl.h>
 #include <sys/socket.h>
 using namespace std;
 
@@ -39,10 +41,7 @@ string atbashChipperEncrypt(const string& input)
                         {
                             output[i] = 'z' + 'a' - output[i];
                         }
-                    else if(output[i] >= '0' && output[i] <= '9')
-                        {
-                            output[i] = '9' - output[i];
-                        }
+                  
                 }
         }
         return output;
@@ -70,10 +69,6 @@ string atbashChipperDecrypt(const string& input)
                     {
                         output[i] = 'z' + 'a' - output[i];
                     }
-                    else if(output[i] >= '0' && output[i] <= '9')
-                        {
-                            output[i] = '9' - output[i];
-                        }
                 }
         }
         return output;
@@ -112,10 +107,7 @@ void loadUsers()
                                 {
                                     password[i] = 'z' + 'a' - password[i];
                                 }
-                        else if(password[i] >= '0' && password[i] <= '9')
-                            {
-                                password[i] = '9' - password[i];
-                            }   
+ 
                         }
                 }
             
@@ -147,10 +139,6 @@ void saveUsers()
                         {
                             text[i] = 'z' + 'a' - text[i];
                         }
-                        else if(text[i] >= '0' && text[i] <= '9')
-                        {
-                            text[i] = '9' - text[i];
-                        }
                 }
             
 
@@ -172,6 +160,39 @@ string receiveData(int clientSock)
     recv(clientSock, buffer, length, 0); 
     buffer[length] = '\0';
     return string(buffer);
+}
+
+
+
+
+
+bool searchInFile(const char* filename, const string& searchTerm) {
+    int fd = open(filename, O_RDONLY);  
+    if (fd == -1) {
+        cout << "Error opening file!" << endl;
+        return false;
+    }
+
+    char buffer[1024];  
+    int bytesRead;
+    string fileContent;
+
+    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
+        fileContent.append(buffer, bytesRead);
+
+        size_t pos = fileContent.find(searchTerm);
+        if (pos != string::npos) {
+            close(fd);
+            return true; 
+        }
+
+        if (bytesRead == sizeof(buffer)) {
+            fileContent.erase(0, fileContent.size() - searchTerm.size());
+        }
+    }
+
+    close(fd);
+    return false;
 }
 
 
